@@ -24,12 +24,30 @@ from typing import List, Dict, Any
 from pathlib import Path
 from dotenv import load_dotenv
 from langsmith import Client
-from langchain import hub
 from langchain_core.prompts import ChatPromptTemplate
-from utils import check_env_vars, format_score, print_section_header, get_llm as get_configured_llm
+from utils import (
+    check_env_vars,
+    format_score,
+    print_section_header,
+    invoke_with_retry,
+    get_llm as get_configured_llm,
+)
 from metrics import evaluate_f1_score, evaluate_clarity, evaluate_precision
 
+try:
+    from langchain import hub
+except ImportError:
+    hub = None
+
 load_dotenv()
+
+PROMPT_HUB_NAME = "bug_to_user_story_v2"
+
+
+def build_prompt_name() -> str:
+    """Monta o nome do prompt aceitando workspaces sem namespace explicito."""
+    username = os.getenv("USERNAME_LANGSMITH_HUB", "").strip()
+    return f"{username}/{PROMPT_HUB_NAME}" if username else PROMPT_HUB_NAME
 
 
 def get_llm():
@@ -105,7 +123,10 @@ def create_evaluation_dataset(client: Client, dataset_name: str, jsonl_path: str
 def pull_prompt_from_langsmith(prompt_name: str) -> ChatPromptTemplate:
     try:
         print(f"   Puxando prompt do LangSmith Hub: {prompt_name}")
-        prompt = hub.pull(prompt_name)
+        if hub is not None:
+            prompt = hub.pull(prompt_name)
+        else:
+            prompt = Client().pull_prompt(prompt_name)
         print(f"   ✓ Prompt carregado com sucesso")
         return prompt
 
@@ -151,7 +172,10 @@ def evaluate_prompt_on_example(
 
         chain = prompt_template | llm
 
-        response = chain.invoke(inputs)
+        response = invoke_with_retry(
+            lambda: chain.invoke(inputs),
+            description="geracao da user story",
+        )
         answer = response.content
 
         reference = outputs.get("reference", "") if isinstance(outputs, dict) else ""
@@ -315,13 +339,13 @@ def main():
     print("  python src/push_prompts.py\n")
 
     username = os.getenv("USERNAME_LANGSMITH_HUB", "")
-    if not username:
+    if False and not username:
         print("❌ USERNAME_LANGSMITH_HUB não configurada no .env")
         print("   Configure seu username do LangSmith Hub antes de continuar.")
         return 1
 
     prompts_to_evaluate = [
-        f"{username}/bug_to_user_story_v2",
+        build_prompt_name(),
     ]
 
     all_passed = True

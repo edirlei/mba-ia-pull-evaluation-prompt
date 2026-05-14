@@ -27,7 +27,7 @@ import re
 from typing import Dict, Any
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage, HumanMessage
-from utils import get_eval_llm
+from utils import get_eval_llm, invoke_with_retry
 
 load_dotenv()
 
@@ -128,7 +128,10 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
     try:
         llm = get_evaluator_llm()
-        response = llm.invoke([HumanMessage(content=evaluator_prompt)])
+        response = invoke_with_retry(
+            lambda: llm.invoke([HumanMessage(content=evaluator_prompt)]),
+            description="avaliacao F1",
+        )
         result = extract_json_from_response(response.content)
 
         precision = float(result.get("precision", 0.0))
@@ -225,7 +228,10 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
     try:
         llm = get_evaluator_llm()
-        response = llm.invoke([HumanMessage(content=evaluator_prompt)])
+        response = invoke_with_retry(
+            lambda: llm.invoke([HumanMessage(content=evaluator_prompt)]),
+            description="avaliacao Clarity",
+        )
         result = extract_json_from_response(response.content)
 
         score = float(result.get("score", 0.0))
@@ -312,7 +318,10 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
     try:
         llm = get_evaluator_llm()
-        response = llm.invoke([HumanMessage(content=evaluator_prompt)])
+        response = invoke_with_retry(
+            lambda: llm.invoke([HumanMessage(content=evaluator_prompt)]),
+            description="avaliacao Precision",
+        )
         result = extract_json_from_response(response.content)
 
         score = float(result.get("score", 0.0))
@@ -397,7 +406,10 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
     try:
         llm = get_evaluator_llm()
-        response = llm.invoke([HumanMessage(content=evaluator_prompt)])
+        response = invoke_with_retry(
+            lambda: llm.invoke([HumanMessage(content=evaluator_prompt)]),
+            description="avaliacao Tone Score",
+        )
         result = extract_json_from_response(response.content)
 
         score = float(result.get("score", 0.0))
@@ -485,7 +497,10 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
     try:
         llm = get_evaluator_llm()
-        response = llm.invoke([HumanMessage(content=evaluator_prompt)])
+        response = invoke_with_retry(
+            lambda: llm.invoke([HumanMessage(content=evaluator_prompt)]),
+            description="avaliacao Acceptance Criteria",
+        )
         result = extract_json_from_response(response.content)
 
         score = float(result.get("score", 0.0))
@@ -575,7 +590,10 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
     try:
         llm = get_evaluator_llm()
-        response = llm.invoke([HumanMessage(content=evaluator_prompt)])
+        response = invoke_with_retry(
+            lambda: llm.invoke([HumanMessage(content=evaluator_prompt)]),
+            description="avaliacao User Story Format",
+        )
         result = extract_json_from_response(response.content)
 
         score = float(result.get("score", 0.0))
@@ -675,7 +693,10 @@ NÃO adicione nenhum texto antes ou depois do JSON.
 
     try:
         llm = get_evaluator_llm()
-        response = llm.invoke([HumanMessage(content=evaluator_prompt)])
+        response = invoke_with_retry(
+            lambda: llm.invoke([HumanMessage(content=evaluator_prompt)]),
+            description="avaliacao Completeness",
+        )
         result = extract_json_from_response(response.content)
 
         score = float(result.get("score", 0.0))

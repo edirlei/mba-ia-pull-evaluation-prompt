@@ -3,13 +3,24 @@ Funções auxiliares para o projeto de otimização de prompts.
 """
 
 import os
+import sys
+import time
 import yaml
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable, TypeVar
 from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+T = TypeVar("T")
+_LAST_LLM_CALL_TS = 0.0
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 def load_yaml(file_path: str) -> Optional[Dict[str, Any]]:
@@ -241,3 +252,72 @@ def get_eval_llm(temperature: float = 0.0):
     """
     eval_model = os.getenv('EVAL_MODEL', 'gpt-4o')
     return get_llm(model=eval_model, temperature=temperature)
+
+
+def is_retryable_rate_limit_error(error: Exception) -> bool:
+    """
+    Verifica se um erro parece ser de quota/rate limit temporario.
+    """
+    error_msg = str(error).lower()
+    retryable_terms = [
+        "resource_exhausted",
+        "quota exceeded",
+        "rate limit",
+        "too many requests",
+        "429",
+    ]
+    return any(term in error_msg for term in retryable_terms)
+
+
+def throttle_llm_calls():
+    """
+    Aplica intervalo minimo entre chamadas para providers mais sensiveis a rate limit.
+    """
+    global _LAST_LLM_CALL_TS
+
+    provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    if provider not in {"google", "gemini"}:
+        return
+
+    min_interval = float(os.getenv("LLM_MIN_INTERVAL_SECONDS", "3.5"))
+    if _LAST_LLM_CALL_TS <= 0:
+        return
+
+    elapsed = time.monotonic() - _LAST_LLM_CALL_TS
+    if elapsed < min_interval:
+        wait_time = min_interval - elapsed
+        print(f"      Aguardando {wait_time:.1f}s para respeitar o limite do provider...")
+        time.sleep(wait_time)
+
+
+def invoke_with_retry(
+    operation: Callable[[], T],
+    description: str = "LLM call",
+    max_retries: int = 6,
+    base_delay: float = 8.0,
+) -> T:
+    """
+    Executa uma operacao com retry/backoff para erros temporarios de quota/rate limit.
+    """
+    global _LAST_LLM_CALL_TS
+
+    for attempt in range(max_retries):
+        throttle_llm_calls()
+
+        try:
+            result = operation()
+            _LAST_LLM_CALL_TS = time.monotonic()
+            return result
+        except Exception as exc:
+            if not is_retryable_rate_limit_error(exc) or attempt == max_retries - 1:
+                raise
+
+            wait_time = min(base_delay * (2 ** attempt), 90.0)
+            print(
+                f"      {description} atingiu limite temporario do provider. "
+                f"Tentando novamente em {wait_time:.0f}s "
+                f"({attempt + 1}/{max_retries})..."
+            )
+            time.sleep(wait_time)
+
+    raise RuntimeError(f"{description} falhou apos {max_retries} tentativas.")
